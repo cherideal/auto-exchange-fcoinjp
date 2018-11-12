@@ -18,15 +18,19 @@ symbol_type = ['usdt', 'fj', 'btc']
 # 买卖间隔时间
 second = 0.5
 # 下单价格间隔
-price_range = 0.00015
+price_range = 0.0002
+
+price_diff = 0.00003
+
+trade_range = 100
 
 
 # 需要计算手续费的开始时间
 fees_start_time = {
 	'year': 2018,
 	'month': 11,
-	'day': 11,
-	'hour': 22,
+	'day': 12,
+	'hour': 0,
 	'minute': 0,
 	'second': 0
 }
