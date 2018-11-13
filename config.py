@@ -22,14 +22,14 @@ price_range = 0.0002
 
 price_diff = 0.00003
 
-trade_range = 100
+trade_range = 50
 
 
 # 需要计算手续费的开始时间
 fees_start_time = {
 	'year': 2018,
 	'month': 11,
-	'day': 12,
+	'day': 13,
 	'hour': 0,
 	'minute': 0,
 	'second': 0
