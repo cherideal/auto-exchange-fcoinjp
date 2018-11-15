@@ -4,11 +4,10 @@
 # @Last Modified by:   zhiz
 # @Last Modified time: 2018-06-25 17:23:56
 import logging
-import logging.handlers
 from fcoin import Fcoin
 from fcoin_websocket.fcoin_client import fcoin_client
 from auth import api_key, api_secret
-from config import symbols, second, amount, price_difference, is_direct_buy, fees_start_time, price_range, trade_range, price_diff
+from config import symbols, second, amount, price_difference, is_direct_buy, fees_start_time, price_range, trade_range, price_diff, order_count_diff
 import os, time, base64
 from datetime import datetime
 import time
@@ -16,16 +15,9 @@ import time
 symbol = symbols[0] + symbols[1]
 
 
-LOG_FILE = 'tst.log'
-handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes = 1024*1024, backupCount = 5) # 实例化handler 
-fmt = '%(asctime)s - %(filename)s:%(lineno)s - %(name)s - %(message)s'
-formatter = logging.Formatter(fmt)   # 实例化formatter
-handler.setFormatter(formatter)      # 为handler添加formatter
-logger = logging.getLogger('tst')    # 获取名为tst的logger
-logger.addHandler(handler)           # 为logger添加handler
-logger.setLevel(logging.DEBUG)
-
 class Robot(object):
+    logging.basicConfig(filename='logger.log', level=logging.WARN)
+    
     """docstring for Robot"""
     def __init__(self):
         self.fcoin = Fcoin(api_key, api_secret)
@@ -62,33 +54,29 @@ class Robot(object):
         return specfic_balance
 
     # 买操作
-    def buy_action(self, this_symbol, this_price, this_amount, real_diff, should_repeat = 0):
+    def buy_action(self, this_symbol, this_price, this_amount, diff, should_repeat = 0):
         ticker = self.ticker
-        diff = this_price * price_diff
-        if (diff < real_diff):
-            diff = real_diff
         cur_price = str(self.trunc(this_price - diff, self.price_decimal))
         print('准备买入', this_price, ticker)
         buy_result = self.fcoin.buy(this_symbol, cur_price, str(this_amount))
         print('buy_result is', buy_result)
         buy_order_id = buy_result['data']
         if buy_order_id:
-            logger.info('买单: '+this_price+'价格成功委托, 订单ID: ' + buy_order_id)
+            print('++++++++++++++++++++++++++++买单: ' + cur_price + '价格成功委托, 订单ID: ' + buy_order_id)
+            logging.warning('买单: ' + cur_price + '价格成功委托, 订单ID: ' + buy_order_id)
         return buy_order_id
 
     # 卖操作
-    def sell_action(self, this_symbol, this_price, this_amount, real_diff):
+    def sell_action(self, this_symbol, this_price, this_amount, diff):
         ticker = self.ticker
-        diff = this_price * price_diff
-        if (diff < real_diff):
-            diff = real_diff
         cur_price = str(self.trunc(this_price + diff, self.price_decimal))
         print('准备卖出', cur_price, ticker)
         sell_result = self.fcoin.sell(this_symbol, cur_price, str(this_amount))
         print('sell_result is: ', sell_result)
         sell_order_id = sell_result['data']
         if sell_order_id:
-            logger.info('卖单: ' + this_price + '价格成功委托, 订单ID: ' + sell_order_id)
+            print('----------------------------卖单: ' + cur_price + '价格成功委托, 订单ID: ' + sell_order_id)
+            logging.warning('卖单: ' + cur_price + '价格成功委托, 订单ID: ' + sell_order_id)
         return sell_order_id
 
     def list_active_orders(self, this_symbol, state = 'submitted'):
@@ -126,26 +114,36 @@ class Robot(object):
         print("buy_count:", order_buy, "buy_min:", price_buy_min, "buy_max:", price_buy_max, "sell_count:", order_sell, "sell_min", price_sell_min, "sell_max", price_sell_max, "order_price_range", order_price_range)
         return (order_buy, price_buy_max, id_buy_min, order_sell, price_sell_min, id_sell_max, order_price_range)
 
+    def adjust(self, real_diff, order_price):
+        diff = order_price * price_diff
+        if (diff < real_diff):
+            diff = real_diff
+        buy_diff = diff
+        sell_diff = diff
+        return (buy_diff, sell_diff)
+
     def strategy(self, symbol, order_price, amount, real_diff):
         order_buy, price_buy_max, id_buy_min, order_sell, price_sell_min, id_sell_max, order_price_range = self.get_order_count(symbol)
         if (order_price_range > trade_range):
-            if (order_buy > order_sell + 9):
+            if (order_buy > order_sell + order_count_diff):
                 if "" != id_buy_min:
                     print("order_price_range:", order_price_range, "buy_order_cancel:", id_buy_min)
                     self.fcoin.cancel_order(id_buy_min)
-            if (order_sell > order_buy + 9):
+            if (order_sell > order_buy + order_count_diff):
                 if "" != id_sell_max:
                     print("order_price_range", order_price_range, "sell_order_cancel:", id_sell_max)
                     self.fcoin.cancel_order(id_sell_max)
+
+        buy_diff, sell_diff = self.adjust(real_diff, order_price)
         cur_price_range = price_range * order_price
         if ((price_buy_max + cur_price_range) < order_price):
             try:
-                buy_id = self.buy_action(symbol, order_price, amount, real_diff)
+                buy_id = self.buy_action(symbol, order_price, amount, buy_diff)
             except Exception as err:
                 print("failed to buy", err)
         if ((price_sell_min - cur_price_range) > order_price):
             try:
-                sell_id = self.sell_action(symbol, order_price, amount, real_diff)
+                sell_id = self.sell_action(symbol, order_price, amount, sell_diff)
             except Exception as err:
                 print("failed to sell", err)
 
@@ -173,6 +171,7 @@ class Robot(object):
         self.client.subscribe_ticker(symbol, self.ticker_handler)
         self.symbols_action()
         self.get_balance_action(symbols)
+        
         time = 0
         while True:
             self.trade()
@@ -182,7 +181,7 @@ class Robot(object):
 
 if __name__ == '__main__':
     try:
-        while(True):
+        while (True):
             robot = Robot()
             robot.run()
     except KeyboardInterrupt:
